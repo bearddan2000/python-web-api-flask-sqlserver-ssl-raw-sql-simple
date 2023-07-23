@@ -1,0 +1,64 @@
+import logging
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.engine.result import ChunkedIteratorResult
+from sqlalchemy.sql import select, delete, insert, update
+
+from model import DbModel
+
+logging.basicConfig(level=logging.INFO)
+
+class Chained():
+    def __init__(self, db: SQLAlchemy) -> None:
+        self.db = db
+
+    def jsonify_results(self, collection: ChunkedIteratorResult) -> dict:
+        results = []
+        for item in collection:
+            for obj in item:
+                results.append({
+                    "id": obj.id,
+                    "breed": obj.breed,
+                    "color": obj.color
+                })
+
+        return {"results": results}
+
+    def all(self):
+        stm = select(DbModel)
+        collection: ChunkedIteratorResult = self.db.session.execute(stm)
+        return self.jsonify_results(collection)
+        
+    def commit_refresh(self, stm, args: dict=None) -> dict:
+        logging.info(args)
+        if args is not None:
+            logging.info(args)
+            self.db.session.execute(statement=stm,params=args)
+        else:
+            logging.info(args)
+            self.db.session.execute(statement=stm)
+        self.db.session.commit()
+        return self.all()
+    
+    def filter_by(self, dog_id):
+        stm = select(DbModel).where(DbModel.id == dog_id)
+        collection: ChunkedIteratorResult = self.db.session.execute(statement=stm)
+        return self.jsonify_results(collection)
+
+    def delete_by(self, dog_id):
+        args = {"dog_id": int(dog_id)}
+        stm = delete(DbModel).where(DbModel.id == dog_id)
+        return self.commit_refresh(stm,args)
+
+    def insert_last(self, dog_breed, dog_color):
+        stm = insert(DbModel).values(breed=dog_breed,color=dog_color)
+        return self.commit_refresh(stm)
+
+    def insert_entry(self, dog_breed, dog_color):
+        self.insert_last(dog_breed, dog_color)
+        return self.all()
+
+    def update_entry(self, dog_id, dog_breed, dog_color):
+        stm = update(DbModel) \
+            .where(DbModel.id == dog_id) \
+            .values(breed=dog_breed,color=dog_color)
+        return self.commit_refresh(stm)
